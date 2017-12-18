@@ -70,3 +70,4 @@ ZEND_TSRMLS_CACHE_EXTERN()
  * vim<600: noet sw=4 ts=4
  */
 PHP_FUNCTION(arr_offset);
+PHP_FUNCTION(arr_key_value_partner);
