@@ -148,6 +148,7 @@ PHP_MINFO_FUNCTION(arr_extension)
 const zend_function_entry arr_extension_functions[] = {
 	PHP_FE(confirm_arr_extension_compiled,	NULL)		/* For testing, remove later. */
 	PHP_FE(arr_offset,	NULL)		/* For testing, remove later. */
+	PHP_FE(arr_key_value_partner,	NULL)		/* For testing, remove later. */
 	PHP_FE_END	/* Must be the last line in arr_extension_functions[] */
 };
 /* }}} */
@@ -183,18 +184,6 @@ ZEND_GET_MODULE(arr_extension)
  * vim600: noet sw=4 ts=4 fdm=marker
  * vim<600: noet sw=4 ts=4
  */
-static int php_hello_array_walk(zval *ele TSRMLS_DC)
-{
-    zval temp = *ele; // 临时zval，避免convert_to_string 污染原元素
-    zval_copy_ctor(&temp);  // 分配新 zval 空间并复制 ele 的值
-    convert_to_string(&temp); // 字符串类型转换
-
-    //简单的打印
-    PHPWRITE(Z_STRVAL(temp), Z_STRLEN(temp));
-    php_printf("\n");
-    zval_dtor(&temp); //释放临时的 temp
-    return ZEND_HASH_APPLY_KEEP;
-}
 
 PHP_FUNCTION(arr_offset)
 {
@@ -206,7 +195,67 @@ PHP_FUNCTION(arr_offset)
 	
 	HashTable * arr_hash;
 	arr_hash = Z_ARRVAL_P(arr);
-    arr_hash->nInternalPointer += offset;
-	zval * ret = zend_hash_get_current_data(arr_hash);
-	RETURN_ZVAL(ret, 1, 1);
+	Bucket bukect = arr_hash->arData[offset];
+	zval ret = bukect.val;
+	RETURN_ZVAL(&ret, 1, 1);
+}
+
+PHP_FUNCTION(arr_key_value_partner) {
+	zval * arr;
+	char * key, * value_key;
+	size_t key_len, value_key_len;
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssa", &key, &key_len, &value_key, &value_key_len, &arr) == FAILURE) {
+		RETURN_NULL();
+		return ;
+	}
+	
+	HashTable * arr_hash;
+	arr_hash = Z_ARRVAL_P(arr);
+	Bucket bukect, *tmp;
+	zval bukect_val, *result;
+	HashTable * item;
+	HashTable * ret = (HashTable *)malloc(sizeof(HashTable));
+	zend_hash_init(ret, arr_hash->nNumUsed, NULL, ZVAL_PTR_DTOR, 0);
+	zval ret_item_value;
+	char * ret_item_key;
+	zend_string * zend_string_key = zend_string_init(key, key_len, 0);
+	zend_string * zend_string_value_key = zend_string_init(value_key, value_key_len, 0);
+
+	for (int i = 0; i < arr_hash->nNumUsed; i++) {
+		bukect = arr_hash->arData[i];
+		bukect_val = bukect.val;
+		if (IS_ARRAY != Z_TYPE_P(&bukect_val)) {
+			php_error(E_WARNING, "item should be array!");
+		}
+
+		item = Z_ARRVAL_P(&bukect_val);
+	
+		if (!zend_hash_exists(item, zend_string_key)) {
+			php_error(E_WARNING, "there is no key:%s\n", key);
+		}
+		tmp = zend_hash_find(item, zend_string_key);
+		ret_item_key = Z_STRVAL_P(&(tmp->val));
+		
+	//	switch (Z_TYPE_P(ret_item_key)) {
+	//		case IS_DOUBLE:
+	//		case IS_LONG:
+	//		case IS_STRING:
+	//			break;
+	//		default:
+	//			php_error("invlid type ret item key");
+	//	}
+
+		if (!zend_hash_exists(item, zend_string_value_key)) {
+			php_error(E_WARNING, "there is no key:%s\n", value_key);
+		}
+
+		tmp = zend_hash_find(item, zend_string_value_key);
+		ret_item_value = tmp->val;
+		zend_string * zend_string_ret_item_key = zend_string_init(ret_item_key, strlen(ret_item_key), 0);
+		result = zend_hash_add(ret, zend_string_ret_item_key, &ret_item_value);
+	}
+	
+	zval *_ret;
+	ZVAL_ARR(_ret, ret);
+	RETURN_ZVAL(_ret, 1, 0);
 }
